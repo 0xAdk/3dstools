@@ -1,4 +1,5 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
+
 import argparse
 import os
 import os.path
@@ -78,7 +79,7 @@ class Sarc:
             self.files.append(path)
 
         self.files.sort(key=self._file_sort)
-    
+
     def _file_sort(self, name):
         if name.endswith('.noname.bin'):
             hash_ = int(os.path.split(name)[-1].split('.')[0].lstrip('0x'), 16)
@@ -343,12 +344,12 @@ class Sarc:
             int_bom = int.from_bytes(bom, 'big')  #for error messages
         except:
             int_bom = (ord(bom[0]) << 8) + ord(bom[1])
-        
+
         if bom not in [b'\xff\xfe', b'\xfe\xff']:
             print('Invalid byte-order marker: 0x%x (expected either 0xFFFE or 0xFEFF)' % int_bom)
             self.invalid = True
             return
-        
+
         self.order = '<' if (bom == b'\xff\xfe') else '>'
         magic, header_len, bom, file_len, data_offset, unknown = struct.unpack(SARC_HEADER_STRUCT % self.order, data)
 
@@ -507,7 +508,7 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--archive', metavar='archive', help='the SARC filename', default=None, required=True)
     parser.add_argument('file', help='files to add to an archive', nargs='*')
     args = parser.parse_args()
-    
+
     if args.big_endian:  #issue with argparse...
         args.little_endian = False
 

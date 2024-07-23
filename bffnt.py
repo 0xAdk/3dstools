@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import argparse
 import json
@@ -536,7 +536,7 @@ class Bffnt:
             print('Invalid byte-order marker: 0x%x (expected 0xFFFE or 0xFEFF)' % bom)
             self.invalid = True
             return
-            
+
         magic, bom, header_size, self.version, file_size, sections = struct.unpack(FFNT_HEADER_STRUCT % self.order, data)
 
         if magic not in FFNT_HEADER_MAGIC:
@@ -575,7 +575,7 @@ class Bffnt:
         magic, section_size, font_type, height, width, ascent, line_feed, alter_char_idx, def_left, def_glyph_width, \
                 def_char_width, encoding, tglp_offset, cwdh_offset, cmap_offset \
                 = struct.unpack(FINF_HEADER_STRUCT % self.order, data)
-        
+
         if magic != FINF_HEADER_MAGIC:
             print('Invalid FINF magic bytes: %s (expected %s)' % (magic, FINF_HEADER_MAGIC))
             self.invalid = True

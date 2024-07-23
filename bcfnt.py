@@ -1,4 +1,5 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
+
 import argparse
 import json
 import math
@@ -371,13 +372,13 @@ class Bffnt:
         finf_tglp_offset_pos = position + 0x10
         finf_cwdh_offset_pos = position + 0x14
         finf_cmap_offset_pos = position + 0x18
-        
+
         data = struct.pack(FINF_HEADER_STRUCT % self.order, FINF_HEADER_MAGIC, FINF_HEADER_SIZE, font_info['fontType'],
                            font_info['lineFeed'],
                            font_info['alterCharIdx'], default_width['left'], default_width['glyphWidth'],
                            default_width['charWidth'], font_info['encoding'], 0, 0, 0,
                            font_info['height'], font_info['width'], font_info['ascent'], 0)
-                           
+
         file_.write(data)
         position += FINF_HEADER_SIZE
 
@@ -397,7 +398,7 @@ class Bffnt:
 
         tglp_start_pos = position
         data = struct.pack(TGLP_HEADER_STRUCT % self.order, TGLP_HEADER_MAGIC, 0, tglp['glyph']['width'],
-                       tglp['glyph']['height'], tglp['glyph']['baseline'], tglp['maxCharWidth'], tglp_data_size, tglp['sheetCount'], 
+                       tglp['glyph']['height'], tglp['glyph']['baseline'], tglp['maxCharWidth'], tglp_data_size, tglp['sheetCount'],
                        sheet['format'], sheet['cols'], sheet['rows'], sheet['width'],
                        sheet['height'], TGLP_DATA_OFFSET)
         file_.write(data)
@@ -537,7 +538,7 @@ class Bffnt:
             print('Invalid byte-order marker: 0x%x (expected 0xFFFE or 0xFEFF)' % bom)
             self.invalid = True
             return
-            
+
         magic, bom, header_size, self.version, file_size, sections = struct.unpack(FFNT_HEADER_STRUCT % self.order, data)
 
         if magic not in FFNT_HEADER_MAGIC:
