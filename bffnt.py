@@ -336,10 +336,7 @@ class Bffnt:
 
                 png_data.append(row)
 
-            file_ = open('%s_sheet%d.png' % (basename_, i), 'wb')
-            writer = png.Writer(width, height, alpha=True)
-            writer.write(file_, png_data)
-            file_.close()
+            png.from_array(png_data, 'RGBA').save('%s_sheet%d.png' % (basename_, i))
         print('Done')
 
     def save(self, filename):
