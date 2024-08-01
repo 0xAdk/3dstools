@@ -869,6 +869,9 @@ class Bffnt:
                                         data_pos = data_x + data_y
                                         bmp_pos = pixel_x + (pixel_y * width)
 
+                                        if bmp_pos >= len(data) or data_pos >= len(bmp):
+                                            continue
+
                                         if to_tglp:
                                             # OR the data since there are pixel formats which use the same byte for
                                             # multiple pixels (A4/L4)
