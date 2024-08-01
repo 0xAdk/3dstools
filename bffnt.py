@@ -425,7 +425,7 @@ class Bffnt:
             for row in list(pixels):
                 for pixel in range(len(row) // 4):
                     bmp.append(row[pixel * 4:pixel * 4 + 4])
-            data = self._sheet_to_bitmap(bmp, to_tglp=True)
+            data = self._bitmap_to_sheet(bmp)
             file_.write(data)
             position += len(data)
 
@@ -816,7 +816,7 @@ class Bffnt:
             return input_
         return input_ - (1 << bits)
 
-    def _sheet_to_bitmap(self, data, to_tglp=False):
+    def _sheet_to_bitmap(self, data):
         width = self.tglp['sheet']['width']
         height = self.tglp['sheet']['height']
         format_ = self.tglp['sheet']['format']
@@ -828,12 +828,8 @@ class Bffnt:
         width = 1 << int(math.ceil(math.log(width, 2)))
         height = 1 << int(math.ceil(math.log(height, 2)))
 
-        if to_tglp:
-            bmp = data
-            data = [0] * self.tglp['sheet']['size']
-        else:
-            # initialize empty bitmap memory (RGBA8)
-            bmp = [[0, 0, 0, 0]] * (width * height)
+        # initialize empty bitmap memory (RGBA8)
+        bmp = [[0, 0, 0, 0]] * (width * height)
 
         tile_width = width // 8
         tile_height = height // 8
@@ -872,23 +868,73 @@ class Bffnt:
                                         if bmp_pos >= len(data) or data_pos >= len(bmp):
                                             continue
 
-                                        if to_tglp:
-                                            # OR the data since there are pixel formats which use the same byte for
-                                            # multiple pixels (A4/L4)
-                                            bytes_ = self._get_tglp_pixel_data(bmp, format_, bmp_pos)
-                                            if len(bytes_) > 1:
-                                                data[data_pos:data_pos + len(bytes_)] = bytes_
-                                            else:
-                                                if PIXEL_FORMAT_SIZE[format_] == 4:
-                                                    data_pos //= 2
-                                                data[data_pos] |= bytes_[0]
-                                        else:
-                                            bmp[bmp_pos] = self._get_pixel_data(data, format_, data_pos)
+                                        bmp[bmp_pos] = self._get_pixel_data(data, format_, data_pos)
 
-        if to_tglp:
-            return struct.pack('%dB' % len(data), *data)
-        else:
-            return bmp
+        return bmp
+
+    def _bitmap_to_sheet(self, data):
+        width = self.tglp['sheet']['width']
+        height = self.tglp['sheet']['height']
+        format_ = self.tglp['sheet']['format']
+
+        data_width = width
+        data_height = height
+
+        # increase the size of the image to a power-of-two boundary, if necessary
+        width = 1 << int(math.ceil(math.log(width, 2)))
+        height = 1 << int(math.ceil(math.log(height, 2)))
+
+        bmp = data
+        data = [0] * self.tglp['sheet']['size']
+
+        tile_width = width // 8
+        tile_height = height // 8
+
+        # sheet is composed of 8x8 pixel tiles
+        for tile_y in range(tile_height):
+            for tile_x in range(tile_width):
+
+                # tile is composed of 2x2 sub-tiles
+                for y in range(2):
+                    for x in range(2):
+
+                        # sub-tile is composed of 2x2 pixel groups
+                        for y2 in range(2):
+                            for x2 in range(2):
+
+                                # pixel group is composed of 2x2 pixels (finally)
+                                for y3 in range(2):
+                                    for x3 in range(2):
+                                        # if the final y value is beyond the input data's height then don't read it
+                                        if tile_y + y + y2 + y3 >= data_height:
+                                            continue
+                                        # same for the x and the input data width
+                                        if tile_x + x + x2 + x3 >= data_width:
+                                            continue
+
+                                        pixel_x = (x3 + (x2 * 2) + (x * 4) + (tile_x * 8))
+                                        pixel_y = (y3 + (y2 * 2) + (y * 4) + (tile_y * 8))
+
+                                        data_x = (x3 + (x2 * 4) + (x * 16) + (tile_x * 64))
+                                        data_y = ((y3 * 2) + (y2 * 8) + (y * 32) + (tile_y * width * 8))
+
+                                        data_pos = data_x + data_y
+                                        bmp_pos = pixel_x + (pixel_y * width)
+
+                                        if bmp_pos >= len(data) or data_pos >= len(bmp):
+                                            continue
+
+                                        # OR the data since there are pixel formats which use the same byte for
+                                        # multiple pixels (A4/L4)
+                                        bytes_ = self._get_tglp_pixel_data(bmp, format_, bmp_pos)
+                                        if len(bytes_) > 1:
+                                            data[data_pos:data_pos + len(bytes_)] = bytes_
+                                        else:
+                                            if PIXEL_FORMAT_SIZE[format_] == 4:
+                                                data_pos //= 2
+                                            data[data_pos] |= bytes_[0]
+
+        return struct.pack('%dB' % len(data), *data)
 
     def _get_pixel_data(self, data, format_, index):
         red = green = blue = alpha = 0
