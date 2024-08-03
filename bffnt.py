@@ -6,7 +6,7 @@ import math
 import os.path
 import struct
 import sys
-from typing import List, Tuple, assert_never
+from typing import Callable, List, Tuple, assert_never
 
 import png
 
@@ -825,18 +825,21 @@ class Bffnt:
             return input_
         return input_ - (1 << bits)
 
-    def _sheet_to_bitmap(self, sheet_data):
-        width = self.tglp['sheet']['width']
-        height = self.tglp['sheet']['height']
-        format_ = self.tglp['sheet']['format']
-
-        # increase the size of the image to a power-of-two boundary, if necessary
-        width = 1 << int(math.ceil(math.log(width, 2)))
-        height = 1 << int(math.ceil(math.log(height, 2)))
-
-        # initialize empty bitmap memory (RGBA8)
-        bmp = [[0, 0, 0, 0]] * (width * height)
-
+    def visit_pixels(
+        self,
+        vistor: Callable[[
+            int, # format
+            List[Tuple[int, int, int, int]], # bmp
+            int, # bmp pos
+            List[int], # sheet data
+            int, # data pos
+        ], None],
+        width: int,
+        height: int,
+        format_,
+        bmp: List[Tuple[int, int, int, int]],
+        sheet_data: List[int],
+    ):
         tile_width = width // 8
         tile_height = height // 8
 
@@ -861,19 +864,36 @@ class Bffnt:
                                         data_x = (x3 + (x2 * 4) + (x * 16) + (tile_x * 64))
                                         data_y = ((y3 * 2) + (y2 * 8) + (y * 32) + (tile_y * width * 8))
 
-                                        data_pos = data_x + data_y
+                                        sheet_data_pos = data_x + data_y
                                         bmp_pos = pixel_x + (pixel_y * width)
 
                                         if bmp_pos >= len(bmp):
                                             continue
-                                        if (data_pos * PIXEL_FORMAT_SIZE[format_] // 8) >= len(sheet_data):
+                                        if (sheet_data_pos * PIXEL_FORMAT_SIZE[format_] // 8) >= len(sheet_data):
                                             continue
 
-                                        bmp[bmp_pos] = self._get_pixel_data(sheet_data, data_pos, format_)
+                                        vistor(format_, bmp, bmp_pos, sheet_data, sheet_data_pos)
+
+    def _sheet_to_bitmap(self, sheet_data):
+        width = self.tglp['sheet']['width']
+        height = self.tglp['sheet']['height']
+        format_ = self.tglp['sheet']['format']
+
+        # increase the size of the image to a power-of-two boundary, if necessary
+        width = 1 << int(math.ceil(math.log(width, 2)))
+        height = 1 << int(math.ceil(math.log(height, 2)))
+
+        # initialize empty bitmap memory (RGBA8)
+        bmp: List[Tuple[int, int, int, int]] = [(0, 0, 0, 0)] * (width * height)
+
+        def vistor(format, bmp, bmp_pos, sheet_data, sheet_data_pos):
+            bmp[bmp_pos] = self._get_pixel_data(format, sheet_data, sheet_data_pos)
+
+        self.visit_pixels(vistor, width, height, format_, bmp, sheet_data)
 
         return bmp
 
-    def _get_pixel_data(self, data: List[int], index: int, format_) -> Tuple[int, int, int, int]:
+    def _get_pixel_data(self, format_, data: List[int], index: int) -> Tuple[int, int, int, int]:
         red = green = blue = alpha = 0
 
         # rrrrrrrr gggggggg bbbbbbbb aaaaaaaa
@@ -964,47 +984,18 @@ class Bffnt:
 
         sheet_data: List[int] = [0] * self.tglp['sheet']['size']
 
-        tile_width = width // 8
-        tile_height = height // 8
+        def vistor(format, bmp, bmp_pos, sheet_data, sheet_data_pos):
+            # OR the data since there are pixel formats which use the same byte for
+            # multiple pixels (A4/L4)
+            bytes_ = self._get_tglp_pixel_data(bmp, bmp_pos, format_)
+            if len(bytes_) > 1:
+                sheet_data[sheet_data_pos:sheet_data_pos + len(bytes_)] = bytes_
+            else:
+                if PIXEL_FORMAT_SIZE[format_] == 4:
+                    sheet_data_pos //= 2
+                sheet_data[sheet_data_pos] |= bytes_[0]
 
-        # sheet is composed of 8x8 pixel tiles
-        for tile_y in range(tile_height):
-            for tile_x in range(tile_width):
-
-                # tile is composed of 2x2 sub-tiles
-                for y in range(2):
-                    for x in range(2):
-
-                        # sub-tile is composed of 2x2 pixel groups
-                        for y2 in range(2):
-                            for x2 in range(2):
-
-                                # pixel group is composed of 2x2 pixels (finally)
-                                for y3 in range(2):
-                                    for x3 in range(2):
-                                        pixel_x = (x3 + (x2 * 2) + (x * 4) + (tile_x * 8))
-                                        pixel_y = (y3 + (y2 * 2) + (y * 4) + (tile_y * 8))
-
-                                        data_x = (x3 + (x2 * 4) + (x * 16) + (tile_x * 64))
-                                        data_y = ((y3 * 2) + (y2 * 8) + (y * 32) + (tile_y * width * 8))
-
-                                        data_pos = data_x + data_y
-                                        bmp_pos = pixel_x + (pixel_y * width)
-
-                                        if bmp_pos >= len(bmp):
-                                            continue
-                                        if (data_pos * PIXEL_FORMAT_SIZE[format_] // 8) >= len(sheet_data):
-                                            continue
-
-                                        # OR the data since there are pixel formats which use the same byte for
-                                        # multiple pixels (A4/L4)
-                                        bytes_ = self._get_tglp_pixel_data(bmp, bmp_pos, format_)
-                                        if len(bytes_) > 1:
-                                            sheet_data[data_pos:data_pos + len(bytes_)] = bytes_
-                                        else:
-                                            if PIXEL_FORMAT_SIZE[format_] == 4:
-                                                data_pos //= 2
-                                            sheet_data[data_pos] |= bytes_[0]
+        self.visit_pixels(vistor, width, height, format_, bmp, sheet_data)
 
         return sheet_data
 
