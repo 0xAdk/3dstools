@@ -6,7 +6,8 @@ import math
 import os.path
 import struct
 import sys
-from typing import Callable, List, Tuple, assert_never
+from enum import Enum
+from typing import Callable, List, Self, Tuple, assert_never
 
 import png
 
@@ -35,55 +36,39 @@ TGLP_HEADER_STRUCT = '%s4sI4BI6HI'
 CWDH_HEADER_STRUCT = '%s4sI2HI'
 CMAP_HEADER_STRUCT = '%s4sI4HI'
 
-FORMAT_RGBA8 = 0x00
-FORMAT_RGB8 = 0x01
-FORMAT_RGBA5551 = 0x02
-FORMAT_RGB565 = 0x03
-FORMAT_RGBA4 = 0x04
-FORMAT_LA8 = 0x05
-FORMAT_HILO8 = 0x06
-FORMAT_L8 = 0x07
-FORMAT_A8 = 0x08
-FORMAT_LA4 = 0x09
-FORMAT_L4 = 0x0A
-FORMAT_A4 = 0x0B
-#TODO: Fix this, in fact, it should be BC4
-FORMAT_ETC1 = 0x0C
-FORMAT_ETC1A4 = 0x0D
+class Format(Enum):
+    RGBA8 = 0x00
+    RGB8 = 0x01
+    RGBA5551 = 0x02
+    RGB565 = 0x03
+    RGBA4 = 0x04
+    LA8 = 0x05
+    HILO8 = 0x06
+    L8 = 0x07
+    A8 = 0x08
+    LA4 = 0x09
+    L4 = 0x0A
+    A4 = 0x0B
+    #TODO: Fix this, in fact, it should be BC4
+    ETC1 = 0x0C
+    ETC1A4 = 0x0D
 
-PIXEL_FORMATS = {
-    FORMAT_RGBA8: 'RGBA8',
-    FORMAT_RGB8: 'RGB8',
-    FORMAT_RGBA5551: 'RGBA5551',
-    FORMAT_RGB565: 'RGB565',
-    FORMAT_RGBA4: 'RGBA4',
-    FORMAT_LA8: 'LA8',
-    FORMAT_HILO8: 'HILO8',
-    FORMAT_L8: 'L8',
-    FORMAT_A8: 'A8',
-    FORMAT_LA4: 'LA4',
-    FORMAT_L4: 'L4',
-    FORMAT_A4: 'A4',
-    FORMAT_ETC1: 'ETC1',
-    FORMAT_ETC1A4: 'ETC1A4'
-}
-
-PIXEL_FORMAT_SIZE = {
-    FORMAT_RGBA8: 32,
-    FORMAT_RGB8: 24,
-    FORMAT_RGBA5551: 16,
-    FORMAT_RGB565: 16,
-    FORMAT_RGBA4: 16,
-    FORMAT_LA8: 16,
-    FORMAT_HILO8: 16,
-    FORMAT_L8: 8,
-    FORMAT_A8: 8,
-    FORMAT_LA4: 8,
-    FORMAT_L4: 4,
-    FORMAT_A4: 4,
-    FORMAT_ETC1: 64,
-    FORMAT_ETC1A4: 128
-}
+    def format_size(self) -> int:
+        match self:
+            case Format.RGBA8: return 32
+            case Format.RGB8: return 24
+            case Format.RGBA5551: return 16
+            case Format.RGB565: return 16
+            case Format.RGBA4: return 16
+            case Format.LA8: return 16
+            case Format.HILO8: return 16
+            case Format.L8: return 8
+            case Format.A8: return 8
+            case Format.LA4: return 8
+            case Format.L4: return 4
+            case Format.A4: return 4
+            case Format.ETC1: return 64
+            case Format.ETC1A4: return 128
 
 ETC_INDIV_RED1_OFFSET = 60
 ETC_INDIV_GREEN1_OFFSET = 52
@@ -199,13 +184,9 @@ class Bffnt:
         self.font_info = json_data['fontInfo']
         tex_info = json_data['textureInfo']
 
-        sheet_pixel_format = None
-        for value in PIXEL_FORMATS.keys():
-            if PIXEL_FORMATS[value] == tex_info['sheetInfo']['colorFormat']:
-                sheet_pixel_format = value
-                break
-
-        if sheet_pixel_format is None:
+        try:
+            sheet_pixel_format = Format[tex_info['sheetInfo']['colorFormat']]
+        except KeyError:
             print('Invalid pixel format: %s' % tex_info['sheetInfo']['colorFormat'])
             self.invalid = True
             return
@@ -315,7 +296,7 @@ class Bffnt:
                     'rows': self.tglp['sheet']['rows'],
                     'width': self.tglp['sheet']['width'],
                     'height': self.tglp['sheet']['height'],
-                    'colorFormat': PIXEL_FORMATS[self.tglp['sheet']['format']]
+                    'colorFormat': self.tglp['sheet']['format'].name
                 }
             },
             'glyphWidths': glyph_widths,
@@ -386,7 +367,7 @@ class Bffnt:
         tglp = self.tglp
         sheet = tglp['sheet']
         tglp_size_pos = position + 0x04
-        tglp_data_size = int(sheet['width'] * sheet['height'] * (PIXEL_FORMAT_SIZE[sheet['format']] / 8.0))
+        tglp_data_size = int(sheet['width'] * sheet['height'] * (sheet['format'].format_size() / 8.0))
 
         file_.seek(finf_tglp_offset_pos)
         file_.write(struct.pack('%sI' % self.order, position + 8))
@@ -395,7 +376,7 @@ class Bffnt:
         tglp_start_pos = position
         data = struct.pack(TGLP_HEADER_STRUCT % self.order, TGLP_HEADER_MAGIC, 0, tglp['glyph']['width'],
                        tglp['glyph']['height'], tglp['sheetCount'], tglp['maxCharWidth'], tglp_data_size,
-                       tglp['glyph']['baseline'], sheet['format'], sheet['cols'], sheet['rows'], sheet['width'],
+                       tglp['glyph']['baseline'], sheet['format'].value, sheet['cols'], sheet['rows'], sheet['width'],
                        sheet['height'], TGLP_DATA_OFFSET)
         file_.write(data)
 
@@ -652,7 +633,7 @@ class Bffnt:
                 'rows': num_sheet_rows,
                 'width': sheet_width,
                 'height': sheet_height,
-                'format': sheet_pixel_format
+                'format': Format(sheet_pixel_format)
             },
             'sheetOffset': sheet_data_offset
         }
@@ -666,7 +647,7 @@ class Bffnt:
             print('TGLP Max Character Width: %d' % max_char_width)
             print('TGLP Sheet Size: %d' % sheet_size)
             print('TGLP Baseline Position: %d' % baseline_position)
-            print('TGLP Sheet Image Format: 0x%x (%s)' % (sheet_pixel_format, PIXEL_FORMATS[sheet_pixel_format]))
+            print('TGLP Sheet Image Format: 0x%x (%s)' % (sheet_pixel_format, sheet_pixel_format.name))
             print('TGLP Sheet Rows: %d' % num_sheet_rows)
             print('TGLP Sheet Columns: %d' % num_sheet_cols)
             print('TGLP Sheet Width: %d' % sheet_width)
@@ -676,10 +657,10 @@ class Bffnt:
     def _parse_tglp_data(self, data):
         position = self.tglp['sheetOffset']
         self.tglp['sheets'] = []
-        format_ = self.tglp['sheet']['format']
+        format_: Format = self.tglp['sheet']['format']
         for i in range(self.tglp['sheetCount']):
             sheet = data[position:position + self.tglp['sheet']['size']]
-            if format_ == FORMAT_ETC1 or format_ == FORMAT_ETC1A4:
+            if format_ == Format.ETC1 or format_ == Format.ETC1A4:
                 bmp_data = self._decompress_etc1(sheet)
             else:
                 bmp_data = self._sheet_to_bitmap(sheet)
@@ -694,7 +675,7 @@ class Bffnt:
         width = self.tglp['sheet']['width']
         height = self.tglp['sheet']['height']
 
-        with_alpha = self.tglp['sheet']['format'] == FORMAT_ETC1A4
+        with_alpha = self.tglp['sheet']['format'] == Format.ETC1A4
 
         block_size = 16 if with_alpha else 8
 
@@ -828,7 +809,7 @@ class Bffnt:
     def visit_pixels(
         self,
         vistor: Callable[[
-            int, # format
+            Format, # format
             List[Tuple[int, int, int, int]], # bmp
             int, # bmp pos
             List[int], # sheet data
@@ -836,7 +817,7 @@ class Bffnt:
         ], None],
         width: int,
         height: int,
-        format_,
+        format_: Format,
         bmp: List[Tuple[int, int, int, int]],
         sheet_data: List[int],
     ):
@@ -869,7 +850,7 @@ class Bffnt:
 
                                         if bmp_pos >= len(bmp):
                                             continue
-                                        if (sheet_data_pos * PIXEL_FORMAT_SIZE[format_] // 8) >= len(sheet_data):
+                                        if (sheet_data_pos * format_.format_size() // 8) >= len(sheet_data):
                                             continue
 
                                         vistor(format_, bmp, bmp_pos, sheet_data, sheet_data_pos)
@@ -877,7 +858,7 @@ class Bffnt:
     def _sheet_to_bitmap(self, sheet_data):
         width = self.tglp['sheet']['width']
         height = self.tglp['sheet']['height']
-        format_ = self.tglp['sheet']['format']
+        format_: Format = self.tglp['sheet']['format']
 
         # increase the size of the image to a power-of-two boundary, if necessary
         width = 1 << int(math.ceil(math.log(width, 2)))
@@ -897,16 +878,16 @@ class Bffnt:
         red = green = blue = alpha = 0
 
         # rrrrrrrr gggggggg bbbbbbbb aaaaaaaa
-        if format_ == FORMAT_RGBA8:
+        if format_ == Format.RGBA8:
             red, green, blue, alpha = struct.unpack('4B', data[index * 4:index * 4 + 4])
 
         # rrrrrrrr gggggggg bbbbbbbb
-        elif format_ == FORMAT_RGB8:
+        elif format_ == Format.RGB8:
             red, green, blue = struct.unpack('3B', data[index * 3:index * 3 + 3])
             alpha = 255
 
         # rrrrrgg gggbbbbba
-        elif format_ == FORMAT_RGBA5551:
+        elif format_ == Format.RGBA5551:
             b1, b2 = struct.unpack('2B', data[index * 2:index * 2 + 2])
 
             red = ((b1 >> 3) & 0x1F)
@@ -915,7 +896,7 @@ class Bffnt:
             alpha = (b2 & 0x01) * 255
 
         # rrrrrggg gggbbbbb
-        elif format_ == FORMAT_RGB565:
+        elif format_ == Format.RGB565:
             b1, b2 = struct.unpack('2B', data[index * 2:index * 2 + 2])
 
             red = (b1 >> 3) & 0x1F
@@ -924,7 +905,7 @@ class Bffnt:
             alpha = 255
 
         # rrrrgggg bbbbaaaa
-        elif format_ == FORMAT_RGBA4:
+        elif format_ == Format.RGBA4:
             b1, b2 = struct.unpack('2B', data[index * 2:index * 2 + 2])
 
             red = ((b1 >> 4) & 0x0F) * 0x11
@@ -933,40 +914,40 @@ class Bffnt:
             green = (b2 & 0x0F) * 0x11
 
         # llllllll aaaaaaaa
-        elif format_ == FORMAT_LA8:
+        elif format_ == Format.LA8:
             l, alpha = struct.unpack('2B', data[index * 2:index * 2 + 2])
             red = green = blue = l
 
         # ??
-        elif format_ == FORMAT_HILO8:
+        elif format_ == Format.HILO8:
             # TODO
             pass
 
         # llllllll
-        elif format_ == FORMAT_L8:
+        elif format_ == Format.L8:
             red = green = blue = struct.unpack('B', data[index:index + 1])[0]
             alpha = 255
 
         # aaaaaaaa
-        elif format_ == FORMAT_A8:
+        elif format_ == Format.A8:
             alpha, = struct.unpack('B', data[index:index + 1])
             red = green = blue = 255
 
         # llllaaaa
-        elif format_ == FORMAT_LA4:
+        elif format_ == Format.LA4:
             la, = struct.unpack('B', data[index:index + 1])
             red = green = blue = ((la >> 4) & 0x0F) * 0x11
             alpha = (la & 0x0F) * 0x11
 
         # llll
-        elif format_ == FORMAT_L4:
+        elif format_ == Format.L4:
             l, = struct.unpack('B', data[index // 2])
             shift = (index & 1) * 4
             red = green = blue = ((l >> shift) & 0x0F) * 0x11
             alpha = 255
 
         # aaaa
-        elif format_ == FORMAT_A4:
+        elif format_ == Format.A4:
             shift = (index & 1) * 4
             alpha = ((data[index // 2] >> shift) & 0x0F) * 0x11
             green = red = blue = 0xFF
@@ -976,7 +957,7 @@ class Bffnt:
     def _bitmap_to_sheet(self, bmp: List[Tuple[int, int, int, int]]) -> List[int]:
         width = self.tglp['sheet']['width']
         height = self.tglp['sheet']['height']
-        format_ = self.tglp['sheet']['format']
+        format_: Format = self.tglp['sheet']['format']
 
         # increase the size of the image to a power-of-two boundary, if necessary
         width = 1 << int(math.ceil(math.log(width, 2)))
@@ -991,7 +972,7 @@ class Bffnt:
             if len(bytes_) > 1:
                 sheet_data[sheet_data_pos:sheet_data_pos + len(bytes_)] = bytes_
             else:
-                if PIXEL_FORMAT_SIZE[format_] == 4:
+                if format_.format_size() == 4:
                     sheet_data_pos //= 2
                 sheet_data[sheet_data_pos] |= bytes_[0]
 
@@ -1002,14 +983,14 @@ class Bffnt:
     def _get_tglp_pixel_data(self, bmp: List[Tuple[int, int, int, int]], index: int, format_) -> List[int]:
         red, green, blue, alpha = bmp[index]
 
-        if format_ == FORMAT_RGBA8:
+        if format_ == Format.RGBA8:
             return [red, green, blue, alpha]
 
-        elif format_ == FORMAT_RGB8:
+        elif format_ == Format.RGB8:
             return [red, green, blue]
 
         # rrrrrggg ggbbbbba
-        elif format_ == FORMAT_RGBA5551:
+        elif format_ == Format.RGBA5551:
             r5 = (red // 8) & 0x1F
             g5 = (green // 8) & 0x1F
             b5 = (blue // 8) & 0x1F
@@ -1020,7 +1001,7 @@ class Bffnt:
             return [b1, b2]
 
         # rrrrrggg gggbbbbb
-        elif format_ == FORMAT_RGB565:
+        elif format_ == Format.RGB565:
             r5 = (red // 8) & 0x1F
             g6 = (green // 4) & 0x3F
             b5 = (blue // 8) & 0x1F
@@ -1030,7 +1011,7 @@ class Bffnt:
             return [b1, b2]
 
         # rrrrgggg bbbbaaaa
-        elif format_ == FORMAT_RGBA4:
+        elif format_ == Format.RGBA4:
             r4 = (red // 0x11) & 0x0F
             g4 = (green // 0x11) & 0x0F
             b4 = (blue // 0x11) & 0x0F
@@ -1041,27 +1022,27 @@ class Bffnt:
             return [b1, b2]
 
         # llllllll aaaaaaaa
-        elif format_ == FORMAT_LA8:
+        elif format_ == Format.LA8:
             l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
 
             return [l, alpha]
 
-        elif format_ == FORMAT_HILO8:
+        elif format_ == Format.HILO8:
             # TODO
             pass
 
         # llllllll
-        elif format_ == FORMAT_L8:
+        elif format_ == Format.L8:
             l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
 
             return [l]
 
         # aaaaaaaa
-        elif format_ == FORMAT_A8:
+        elif format_ == Format.A8:
             return [alpha]
 
         # llllaaaa
-        elif format_ == FORMAT_LA4:
+        elif format_ == Format.LA4:
             l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722)) // 0x11
             a = (alpha // 0x11) & 0x0F
 
@@ -1069,13 +1050,13 @@ class Bffnt:
             return [b]
 
         # llll
-        elif format_ == FORMAT_L4:
+        elif format_ == Format.L4:
             l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
             shift = (index & 1) * 4
             return [l << shift]
 
         # aaaa
-        elif format_ == FORMAT_A4:
+        elif format_ == Format.A4:
             alpha = (alpha // 0x11) & 0xF
             shift = (index & 1) * 4
             return [alpha << shift]
