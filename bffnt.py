@@ -830,9 +830,6 @@ class Bffnt:
         height = self.tglp['sheet']['height']
         format_ = self.tglp['sheet']['format']
 
-        data_width = width
-        data_height = height
-
         # increase the size of the image to a power-of-two boundary, if necessary
         width = 1 << int(math.ceil(math.log(width, 2)))
         height = 1 << int(math.ceil(math.log(height, 2)))
@@ -858,13 +855,6 @@ class Bffnt:
                                 # pixel group is composed of 2x2 pixels (finally)
                                 for y3 in range(2):
                                     for x3 in range(2):
-                                        # if the final y value is beyond the input data's height then don't read it
-                                        if tile_y + y + y2 + y3 >= data_height:
-                                            continue
-                                        # same for the x and the input data width
-                                        if tile_x + x + x2 + x3 >= data_width:
-                                            continue
-
                                         pixel_x = (x3 + (x2 * 2) + (x * 4) + (tile_x * 8))
                                         pixel_y = (y3 + (y2 * 2) + (y * 4) + (tile_y * 8))
 
@@ -968,9 +958,6 @@ class Bffnt:
         height = self.tglp['sheet']['height']
         format_ = self.tglp['sheet']['format']
 
-        data_width = width
-        data_height = height
-
         # increase the size of the image to a power-of-two boundary, if necessary
         width = 1 << int(math.ceil(math.log(width, 2)))
         height = 1 << int(math.ceil(math.log(height, 2)))
@@ -995,13 +982,6 @@ class Bffnt:
                                 # pixel group is composed of 2x2 pixels (finally)
                                 for y3 in range(2):
                                     for x3 in range(2):
-                                        # if the final y value is beyond the input data's height then don't read it
-                                        if tile_y + y + y2 + y3 >= data_height:
-                                            continue
-                                        # same for the x and the input data width
-                                        if tile_x + x + x2 + x3 >= data_width:
-                                            continue
-
                                         pixel_x = (x3 + (x2 * 2) + (x * 4) + (tile_x * 8))
                                         pixel_y = (y3 + (y2 * 2) + (y * 4) + (tile_y * 8))
 
