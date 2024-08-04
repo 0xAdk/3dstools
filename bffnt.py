@@ -6,7 +6,7 @@ import os.path
 import struct
 import sys
 from enum import Enum
-from typing import Callable, List, Tuple, assert_never
+from typing import Callable, List, Optional, Tuple, assert_never
 
 import png
 import typer
@@ -157,7 +157,8 @@ class Bffnt:
         while cwdh > 0:
             position = cwdh - 8
             cwdh = self._parse_cwdh_header(data[position:position + CWDH_HEADER_SIZE])
-            if self.invalid:
+            if cwdh is None:
+                self.invalid = True
                 return
 
             position += CWDH_HEADER_SIZE
@@ -807,16 +808,14 @@ class Bffnt:
         self,
         vistor: Callable[[
             Format, # format
-            List[Tuple[int, int, int, int]], # bmp
-            int, # bmp pos
-            List[int], # sheet data
-            int, # data pos
+            List[Tuple[int, int, int, int]], int, # bmp + pos
+            bytes, int, # data + pos
         ], None],
         width: int,
         height: int,
         format_: Format,
         bmp: List[Tuple[int, int, int, int]],
-        sheet_data: List[int],
+        sheet_data: bytes,
     ):
         tile_width = width // 8
         tile_height = height // 8
@@ -864,14 +863,18 @@ class Bffnt:
         # initialize empty bitmap memory (RGBA8)
         bmp: List[Tuple[int, int, int, int]] = [(0, 0, 0, 0)] * (width * height)
 
-        def vistor(format, bmp, bmp_pos, sheet_data, sheet_data_pos):
+        def vistor(
+            format: Format,
+            bmp: List[Tuple[int, int, int, int]], bmp_pos: int,
+            sheet_data: bytes, sheet_data_pos: int
+        ):
             bmp[bmp_pos] = self._get_pixel_data(format, sheet_data, sheet_data_pos)
 
         self.visit_pixels(vistor, width, height, format_, bmp, sheet_data)
 
         return bmp
 
-    def _get_pixel_data(self, format_, data: List[int], index: int) -> Tuple[int, int, int, int]:
+    def _get_pixel_data(self, format_, data: bytes, index: int) -> Tuple[int, int, int, int]:
         red = green = blue = alpha = 0
 
         # rrrrrrrr gggggggg bbbbbbbb aaaaaaaa
@@ -938,20 +941,27 @@ class Bffnt:
 
         # llll
         elif format_ == Format.L4:
-            l, = struct.unpack('B', data[index // 2])
-            shift = (index & 1) * 4
-            red = green = blue = ((l >> shift) & 0x0F) * 0x11
+            l = data[index // 2]
+            if index & 1 == 1:
+                l >>= 4
+            l &= 0x0F
+
+            red = green = blue = l * 0x11
             alpha = 255
 
         # aaaa
         elif format_ == Format.A4:
-            shift = (index & 1) * 4
-            alpha = ((data[index // 2] >> shift) & 0x0F) * 0x11
+            a = data[index // 2]
+            if index & 1 == 1:
+                a >>= 4
+            a &= 0x0F
+
+            alpha = a * 0x11
             green = red = blue = 0xFF
 
         return red, green, blue, alpha
 
-    def _bitmap_to_sheet(self, bmp: List[Tuple[int, int, int, int]]) -> List[int]:
+    def _bitmap_to_sheet(self, bmp: List[Tuple[int, int, int, int]]) -> bytes:
         width = self.tglp['sheet']['width']
         height = self.tglp['sheet']['height']
         format_: Format = self.tglp['sheet']['format']
@@ -960,9 +970,9 @@ class Bffnt:
         width = 1 << int(math.ceil(math.log(width, 2)))
         height = 1 << int(math.ceil(math.log(height, 2)))
 
-        sheet_data: List[int] = [0] * self.tglp['sheet']['size']
+        sheet_data: bytes = [0] * self.tglp['sheet']['size']
 
-        def vistor(format, bmp, bmp_pos, sheet_data, sheet_data_pos):
+        def vistor(_, bmp, bmp_pos, sheet_data, sheet_data_pos):
             # OR the data since there are pixel formats which use the same byte for
             # multiple pixels (A4/L4)
             bytes_ = self._get_tglp_pixel_data(bmp, bmp_pos, format_)
@@ -980,88 +990,87 @@ class Bffnt:
     def _get_tglp_pixel_data(self, bmp: List[Tuple[int, int, int, int]], index: int, format_) -> List[int]:
         red, green, blue, alpha = bmp[index]
 
-        if format_ == Format.RGBA8:
-            return [red, green, blue, alpha]
+        match format_:
+            case Format.RGBA8:
+                return [red, green, blue, alpha]
 
-        elif format_ == Format.RGB8:
-            return [red, green, blue]
+            case Format.RGB8:
+                return [red, green, blue]
 
-        # rrrrrggg ggbbbbba
-        elif format_ == Format.RGBA5551:
-            r5 = (red // 8) & 0x1F
-            g5 = (green // 8) & 0x1F
-            b5 = (blue // 8) & 0x1F
-            a = 1 if alpha > 0 else 0
+            # rrrrrggg ggbbbbba
+            case Format.RGBA5551:
+                r5 = (red // 8) & 0x1F
+                g5 = (green // 8) & 0x1F
+                b5 = (blue // 8) & 0x1F
+                a = 1 if alpha > 0 else 0
 
-            b1 = (r5 << 3) | (g5 >> 2)
-            b2 = ((g5 << 6) | (b5 << 1) | a) & 0xFF
-            return [b1, b2]
+                b1 = (r5 << 3) | (g5 >> 2)
+                b2 = ((g5 << 6) | (b5 << 1) | a) & 0xFF
+                return [b1, b2]
 
-        # rrrrrggg gggbbbbb
-        elif format_ == Format.RGB565:
-            r5 = (red // 8) & 0x1F
-            g6 = (green // 4) & 0x3F
-            b5 = (blue // 8) & 0x1F
+            # rrrrrggg gggbbbbb
+            case Format.RGB565:
+                r5 = (red // 8) & 0x1F
+                g6 = (green // 4) & 0x3F
+                b5 = (blue // 8) & 0x1F
 
-            b1 = (r5 << 3) | (g6 >> 3)
-            b2 = ((g6 << 5) | b5) & 0xFF
-            return [b1, b2]
+                b1 = (r5 << 3) | (g6 >> 3)
+                b2 = ((g6 << 5) | b5) & 0xFF
+                return [b1, b2]
 
-        # rrrrgggg bbbbaaaa
-        elif format_ == Format.RGBA4:
-            r4 = (red // 0x11) & 0x0F
-            g4 = (green // 0x11) & 0x0F
-            b4 = (blue // 0x11) & 0x0F
-            a4 = (alpha // 0x11) & 0x0F
+            # rrrrgggg bbbbaaaa
+            case Format.RGBA4:
+                r4 = (red // 0x11) & 0x0F
+                g4 = (green // 0x11) & 0x0F
+                b4 = (blue // 0x11) & 0x0F
+                a4 = (alpha // 0x11) & 0x0F
 
-            b1 = (r4 << 4) | g4
-            b2 = (b4 << 4) | a4
-            return [b1, b2]
+                b1 = (r4 << 4) | g4
+                b2 = (b4 << 4) | a4
+                return [b1, b2]
 
-        # llllllll aaaaaaaa
-        elif format_ == Format.LA8:
-            l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
+            # llllllll aaaaaaaa
+            case Format.LA8:
+                l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
+                return [l, alpha]
 
-            return [l, alpha]
-
-        elif format_ == Format.HILO8:
             # TODO
-            pass
+            case Format.HILO8:
+                assert_never(format_)
 
-        # llllllll
-        elif format_ == Format.L8:
-            l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
+            # llllllll
+            case Format.L8:
+                l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
+                return [l]
 
-            return [l]
+            # aaaaaaaa
+            case Format.A8:
+                return [alpha]
 
-        # aaaaaaaa
-        elif format_ == Format.A8:
-            return [alpha]
+            # llllaaaa
+            case Format.LA4:
+                l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722)) // 0x11
+                a = (alpha // 0x11) & 0x0F
 
-        # llllaaaa
-        elif format_ == Format.LA4:
-            l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722)) // 0x11
-            a = (alpha // 0x11) & 0x0F
+                b = (l << 4) | a
+                return [b]
 
-            b = (l << 4) | a
-            return [b]
+            # llll
+            case Format.L4:
+                l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
+                shift = (index & 1) * 4
+                return [l << shift]
 
-        # llll
-        elif format_ == Format.L4:
-            l = int((red * 0.2126) + (green * 0.7152) + (blue * 0.0722))
-            shift = (index & 1) * 4
-            return [l << shift]
+            # aaaa
+            case Format.A4:
+                alpha = (alpha // 0x11) & 0xF
+                shift = (index & 1) * 4
+                return [alpha << shift]
 
-        # aaaa
-        elif format_ == Format.A4:
-            alpha = (alpha // 0x11) & 0xF
-            shift = (index & 1) * 4
-            return [alpha << shift]
+            case _:
+                assert_never(format_)
 
-        else:
-            assert_never(format_)
-
-    def _parse_cwdh_header(self, data):
+    def _parse_cwdh_header(self, data) -> Optional[int]:
         magic, section_size, start_index, end_index, next_cwdh_offset \
             = struct.unpack(CWDH_HEADER_STRUCT % self.order, data)
 
@@ -1136,7 +1145,7 @@ class Bffnt:
             count = info['end'] - info['start'] + 1
             position = 0
             output = []
-            for i in range(count):
+            for _ in range(count):
                 offset = struct.unpack('%sH' % self.order, data[position:position + 2])[0]
                 position += 2
                 output.append(offset)
@@ -1147,7 +1156,7 @@ class Bffnt:
             count = struct.unpack('%sH' % self.order, data[position:position + 2])[0]
             position += 2
             output = {}
-            for i in range(count):
+            for _ in range(count):
                 code, offset = struct.unpack('%s2H' % self.order, data[position:position + 4])
                 position += 4
                 output[chr(code)] = offset
