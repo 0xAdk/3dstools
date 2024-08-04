@@ -245,10 +245,7 @@ class Bffnt:
         }
 
         for entry in range(cmap['start'], cmap['end'] + 1):
-            try:  #Python2
-                utf16 = unichr(entry)
-            except:  #Python3
-                utf16 = chr(entry)
+            utf16 = chr(entry)
             if utf16 in glyph_map:
                 cmap['entries'][utf16] = glyph_map[utf16]
 
@@ -271,18 +268,12 @@ class Bffnt:
         for cmap in self.cmap_sections:
             if cmap['type'] == MAPPING_DIRECT:
                 for code in range(cmap['start'], cmap['end'] + 1):
-                    try:  #Python2
-                        glyph_mapping[unichr(code)] = code - cmap['start'] + cmap['indexOffset']
-                    except:
-                        glyph_mapping[chr(code)] = code - cmap['start'] + cmap['indexOffset']
+                    glyph_mapping[chr(code)] = code - cmap['start'] + cmap['indexOffset']
             elif cmap['type'] == MAPPING_TABLE:
                 for code in range(cmap['start'], cmap['end'] + 1):
                     index = cmap['indexTable'][code - cmap['start']]
                     if index != 0xFFFF:
-                        try:  #Python2
-                            glyph_mapping[unichr(code)] = index
-                        except:
-                            glyph_mapping[chr(code)] = index
+                        glyph_mapping[chr(code)] = index
             elif cmap['type'] == MAPPING_SCAN:
                 for code in cmap['entries'].keys():
                     glyph_mapping[code] = cmap['entries'][code]
@@ -664,7 +655,7 @@ class Bffnt:
         position = self.tglp['sheetOffset']
         self.tglp['sheets'] = []
         format_: Format = self.tglp['sheet']['format']
-        for i in range(self.tglp['sheetCount']):
+        for _ in range(self.tglp['sheetCount']):
             sheet = data[position:position + self.tglp['sheet']['size']]
             if format_ == Format.ETC1 or format_ == Format.ETC1A4:
                 bmp_data = self._decompress_etc1(sheet)
@@ -1098,7 +1089,7 @@ class Bffnt:
         count = info['end'] - info['start'] + 1
         output = []
         position = 0
-        for i in range(count):
+        for _ in range(count):
             left, glyph, char = struct.unpack('%sb2B' % self.order, data[position:position + 3])
             position += 3
             output.append({
@@ -1159,10 +1150,7 @@ class Bffnt:
             for i in range(count):
                 code, offset = struct.unpack('%s2H' % self.order, data[position:position + 4])
                 position += 4
-                try:  #Python2
-                    output[unichr(code)] = offset
-                except:  #Python3
-                    output[chr(code)] = offset
+                output[chr(code)] = offset
             info['entries'] = output
 
 
@@ -1171,10 +1159,7 @@ def prompt_yes_no(prompt):
     while answer_ not in ('y', 'n'):
         if answer_ is not None:
             print('Please answer "y" or "n"')
-        try:  #Python2
-            answer_ = raw_input(prompt).lower()
-        except NameError:  #Python3
-            answer_ = input(prompt).lower()
+        answer_ = input(prompt).lower()
 
         if len(answer_) == 0:
             answer_ = 'n'
