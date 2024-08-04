@@ -440,7 +440,7 @@ class Bffnt:
             prev_cwdh_offset_pos = position + 0x0C
 
             start_pos = position
-            data = struct.pack(CWDH_HEADER_STRUCT % self.order, CWDH_HEADER_MAGIC, 0, cwdh['start'], cwdh['end'] - 1, 0)
+            data = struct.pack(CWDH_HEADER_STRUCT % self.order, CWDH_HEADER_MAGIC, 0, cwdh['start'], cwdh['end'], 0)
             file_.write(data)
             position += CWDH_HEADER_SIZE
 
