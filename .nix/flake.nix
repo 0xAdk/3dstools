@@ -17,6 +17,7 @@
           python311Packages.pip
           python311Packages.numpy
           python311Packages.pypng
+          python311Packages.typer
         ];
 
         shellHook = ''

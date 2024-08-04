@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import argparse
 import json
 import math
 import os.path
 import struct
 import sys
 from enum import Enum
-from typing import Callable, List, Self, Tuple, assert_never
+from typing import Callable, List, Tuple, assert_never
 
 import png
+import typer
+from typer import Option as Opt
 
 # FINF = Font Info
 # TGLP = Texture Glyph
@@ -131,7 +132,7 @@ class Bffnt:
         self.debug = debug
         self.load_order = load_order
 
-    def read(self, filename):
+    def read(self, filename: str):
         data = open(filename, 'rb').read()
         self.file_size = len(data)
         self.filename = filename
@@ -178,7 +179,7 @@ class Bffnt:
         # convert pixels to RGBA8
         self._parse_tglp_data(data)
 
-    def load(self, json_filename):
+    def load(self, json_filename: str):
         json_data = json.load(open(json_filename, 'r', encoding="utf-8"))
 
         self.order = self.load_order
@@ -1180,34 +1181,50 @@ def prompt_yes_no(prompt):
     return answer_
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='BFFNT Converter Tool')
-    parser.add_argument('-v', '--verbose', help='print more data when working', action='store_true', default=False)
-    parser.add_argument('-d', '--debug', help='print debug information', action='store_true', default=False)
-    parser.add_argument('-y', '--yes', help='answer yes to any questions (overwriting files)', action='store_true',
-                        default=False)
-    parser.add_argument('-a', '--ensure-ascii', help='turn off ensure_ascii option when dump json file', action='store_false',
-                        default=True)
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('-l', '--little-endian', help='Use little endian encoding in the created BFFNT file (default)',
-                       action='store_true', default=False)
-    group.add_argument('-b', '--big-endian', help='Use big endian encoding in the created BFFNT file',
-                       action='store_true', default=False)
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument('-c', '--create', help='create BFFNT file from extracted files', action='store_true',
-                       default=False)
-    group.add_argument('-x', '--extract', help='extract BFFNT into PNG/JSON files', action='store_true', default=False)
-    parser.add_argument('-f', '--file', metavar='bffnt', help='BFFNT file', required=True)
-    args = parser.parse_args()
-    if args.extract and not os.path.exists(args.file):
+app = typer.Typer(
+    context_settings={
+        'help_option_names': ['-h', '--help']
+    },
+    add_completion=False
+)
+
+@app.command()
+def main(
+    verbose:       bool = Opt(False, '-v', '--verbose',       help='print more data when working'),
+    debug:         bool = Opt(False, '-d', '--debug',         help='print debug information'),
+    yes:           bool = Opt(False, '-y', '--yes',           help='answer yes to any questions (overwriting files)'),
+    ensure_ascii:  bool = Opt(True,  '-a', '--ensure-ascii',  help='turn off ensure_ascii option when dump json file'),
+    # these two are exclusive
+    little_endian: bool = Opt(False, '-l', '--little-endian', help='Use little endian encoding in the created BFFNT file\n[default]'),
+    big_endian:    bool = Opt(False, '-b', '--big-endian',    help='Use big endian encoding in the created BFFNT file'),
+    # these two are exclusive and required
+    create:        bool = Opt(False, '-c', '--create',        help='create BFFNT file from extracted files'),
+    extract:       bool = Opt(False, '-x', '--extract',       help='extract BFFNT into PNG/JSON files'),
+    file:          str  = Opt(...,   '-f', '--file',          help='BFFNT file', metavar='bffnt'),
+):
+    """
+    BFFNT Converter Tool
+    """
+
+    # ensure exclusive
+    if little_endian and big_endian:
+        raise typer.BadParameter(f"--little-endian is mutually exclusive with --big-endian")
+
+    # ensure required and exclusive
+    if create and extract:
+        raise typer.BadParameter(f"--create is mutually exclusive with --extract")
+    elif not create and not extract:
+        raise typer.BadParameter(f"--create or --extract is required")
+
+    if extract and not os.path.exists(file):
         print('Could not find BFFNT file:')
-        print(args.file)
+        print(file)
         sys.exit(1)
 
-    basename = os.path.splitext(os.path.basename(args.file))[0]
+    basename = os.path.splitext(os.path.basename(file))[0]
     json_file = '%s_manifest.json' % basename
 
-    if args.extract and os.path.exists(json_file) and not args.yes:
+    if extract and os.path.exists(json_file) and not yes:
         print('JSON output file exists.')
         answer = prompt_yes_no('Overwrite? (y/N) ')
 
@@ -1217,7 +1234,7 @@ if __name__ == '__main__':
 
     sheet_file = '%s_sheet0.png' % basename
 
-    if args.extract and os.path.exists(sheet_file) and not args.yes:
+    if extract and os.path.exists(sheet_file) and not yes:
         print('At least one sheet PNG file exists.')
         answer = prompt_yes_no('Overwrite? (y/N) ')
 
@@ -1225,7 +1242,7 @@ if __name__ == '__main__':
             print('Aborted')
             sys.exit(1)
 
-    if args.create and os.path.exists(args.file) and not args.yes:
+    if create and os.path.exists(file) and not yes:
         print('BFFNT output file exists.')
         answer = prompt_yes_no('Overwrite? (y/N) ')
 
@@ -1233,17 +1250,21 @@ if __name__ == '__main__':
             print('Aborted')
             sys.exit(1)
 
-    if args.big_endian:
+    if big_endian:
         order = '>'
     else:
         order = '<'
-    bffnt = Bffnt(load_order=order, verbose=args.verbose, debug=args.debug)
 
-    if args.extract:
-        bffnt.read(args.file)
+    bffnt = Bffnt(load_order=order, verbose=verbose, debug=debug)
+
+    if extract:
+        bffnt.read(file)
         if not bffnt.invalid:
-            bffnt.extract(args.ensure_ascii)
-    elif args.create:
+            bffnt.extract(ensure_ascii)
+    elif create:
         bffnt.load(json_file)
         if not bffnt.invalid:
-            bffnt.save(args.file)
+            bffnt.save(file)
+
+if __name__ == '__main__':
+    app()
