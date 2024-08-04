@@ -118,6 +118,10 @@ class Bffnt:
     file_size = 0
     filename = ''
     font_info = {}
+    tglp_offset: int
+    cwdh_offset: int
+    cmap_offset: int
+
     tglp = {}
     cwdh_sections = []
     cmap_sections = []
