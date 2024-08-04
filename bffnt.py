@@ -1260,12 +1260,14 @@ def main(
 
     if extract:
         bffnt.read(file)
-        if not bffnt.invalid:
-            bffnt.extract(ensure_ascii)
+        if bffnt.invalid:
+            exit(1)
+        bffnt.extract(ensure_ascii)
     elif create:
         bffnt.load(json_file)
-        if not bffnt.invalid:
-            bffnt.save(file)
+        if bffnt.invalid:
+            exit(1)
+        bffnt.save(file)
 
 if __name__ == '__main__':
     app()
