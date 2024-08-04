@@ -539,7 +539,8 @@ class Bffnt:
 
 
         if self.version not in VERSIONS:
-            print('Unknown version: 0x%08x (expected 0x%08x)' % (version, VERSION))
+            print('Unknown version: 0x%08x (expected one of %s)' %
+                  (self.version, ', '.join('0x%08x' % k for k in VERSIONS)))
             self.invalid = True
             return
 
