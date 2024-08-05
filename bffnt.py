@@ -6,7 +6,8 @@ import os.path
 import struct
 import sys
 from enum import Enum
-from typing import Callable, List, Optional, Tuple, assert_never
+from typing import Any, Callable, Dict, List, Optional, Tuple, assert_never
+from dataclasses import dataclass
 
 import png
 import typer
@@ -112,6 +113,18 @@ MAPPING_METHODS = {
 
 TGLP_DATA_OFFSET = 0x2000
 
+@dataclass
+class CwdhSectionData:
+    left: Any
+    glyph: Any
+    char: Any
+
+@dataclass
+class CwdhSection:
+    start: int
+    end: int
+    size: int
+    data: List[CwdhSectionData]
 
 class Bffnt:
     order = None
@@ -124,7 +137,7 @@ class Bffnt:
     cmap_offset: int
 
     tglp = {}
-    cwdh_sections = []
+    cwdh_sections: List[CwdhSection] = []
     cmap_sections = []
 
     def __init__(self, verbose=False, debug=False, load_order='<'):
@@ -163,7 +176,7 @@ class Bffnt:
 
             position += CWDH_HEADER_SIZE
             info = self.cwdh_sections[-1]
-            self._parse_cwdh_data(info, data[position:position + info['size'] - CWDH_HEADER_SIZE])
+            self._parse_cwdh_data(info, data[position:position + info.size - CWDH_HEADER_SIZE])
 
         # navigate to CMAP (offset skips the MAGIC+size)
         cmap = self.cmap_offset
@@ -214,22 +227,20 @@ class Bffnt:
         }
 
         widths = json_data['glyphWidths']
-        cwdh = {
-            'start': 0,
-            'end': 0,
-            'data': []
-        }
+        cwdh = CwdhSection(start=0, end=0, size=0, data=[])
 
         widest = 0
         glyph_indicies = list(widths.keys())
         glyph_indicies.sort(key=self._int_sort)
 
-        cwdh['end'] = int(glyph_indicies[-1], 10)
+        cwdh.end = int(glyph_indicies[-1], base=10)
 
         for idx in glyph_indicies:
-            cwdh['data'].append(widths[idx])
-            if widths[idx]['char'] > widest:
-                widest = widths[idx]['char']
+            cwdh_data = CwdhSectionData(**widths[idx])
+
+            cwdh.data.append(cwdh_data)
+            if cwdh_data.char > widest:
+                widest = cwdh_data.char
 
         self.tglp['maxCharWidth'] = widest
 
@@ -260,10 +271,15 @@ class Bffnt:
             print('Extracting...')
         basename_ = os.path.splitext(os.path.basename(self.filename))[0]
 
-        glyph_widths = {}
+        glyph_widths: Dict[int, Dict[str, int]] = {}
         for cwdh in self.cwdh_sections:
-            for index in range(cwdh['start'], cwdh['end'] + 1):
-                glyph_widths[index] = cwdh['data'][index - cwdh['start']]
+            for index in range(cwdh.start, cwdh.end + 1):
+                data = cwdh.data[index - cwdh.start]
+                glyph_widths[index] = {
+                    'char': data.char,
+                    'glyph': data.glyph,
+                    'left': data.left,
+                }
 
         glyph_mapping = {}
         for cmap in self.cmap_sections:
@@ -440,15 +456,14 @@ class Bffnt:
             prev_cwdh_offset_pos = position + 0x0C
 
             start_pos = position
-            data = struct.pack(CWDH_HEADER_STRUCT % self.order, CWDH_HEADER_MAGIC, 0, cwdh['start'], cwdh['end'], 0)
+            data = struct.pack(CWDH_HEADER_STRUCT % self.order, CWDH_HEADER_MAGIC, 0, cwdh.start, cwdh.end, 0)
             file_.write(data)
             position += CWDH_HEADER_SIZE
 
-            for code in range(cwdh['start'], cwdh['end'] + 1):
-                widths = cwdh['data'][code]
-                for key in ('left', 'glyph', 'char'):
-                    file_.write(struct.pack('=b', widths[key]))
-                    position += 1
+            for code in range(cwdh.start, cwdh.end + 1):
+                widths = cwdh.data[code]
+                file_.write(struct.pack('=bbb', widths.left, widths.glyph, widths.char))
+                position += 3
 
             file_.seek(size_pos)
             file_.write(struct.pack('%sI' % self.order, position - start_pos))
@@ -1080,11 +1095,12 @@ class Bffnt:
             self.invalid = True
             return
 
-        self.cwdh_sections.append({
-            'size': section_size,
-            'start': start_index,
-            'end': end_index
-        })
+        self.cwdh_sections.append(CwdhSection(
+            size=section_size,
+            start=start_index,
+            end=end_index,
+            data=[],
+        ))
 
         if self.debug:
             print('CWDH Magic: %s' % magic)
@@ -1095,19 +1111,15 @@ class Bffnt:
 
         return next_cwdh_offset
 
-    def _parse_cwdh_data(self, info, data):
-        count = info['end'] - info['start'] + 1
-        output = []
-        position = 0
+    def _parse_cwdh_data(self, info: CwdhSection, data: bytes):
+        count = info.end - info.start + 1
+        output: List[CwdhSectionData] = []
+        position: int = 0
         for _ in range(count):
             left, glyph, char = struct.unpack('%sb2B' % self.order, data[position:position + 3])
             position += 3
-            output.append({
-                'left': left,
-                'glyph': glyph,
-                'char': char
-            })
-        info['data'] = output
+            output.append(CwdhSectionData(left=left, glyph=glyph, char=char))
+        info.data = output
 
     def _parse_cmap_header(self, data):
         magic, section_size, code_begin, code_end, map_method, unknown, next_cmap_offset \
