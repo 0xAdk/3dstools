@@ -465,6 +465,12 @@ class Bffnt:
                 file_.write(struct.pack('=bbb', widths.left, widths.glyph, widths.char))
                 position += 3
 
+            # TODO: is this always added? or should it be tracked in the manifest
+            padding = position % 4
+            for _ in range(padding):
+                file_.write(struct.pack('b', 0))
+            position += padding
+
             file_.seek(size_pos)
             file_.write(struct.pack('%sI' % self.order, position - start_pos))
             file_.seek(position)
@@ -510,6 +516,12 @@ class Bffnt:
                     index = cmap['entries'][code]
                     file_.write(struct.pack('%s2H' % self.order, ord(code), index))
                     position += 4
+
+            # TODO: is this always added? or should it be tracked in the manifest
+            padding = position % 4
+            for _ in range(padding):
+                file_.write(struct.pack('b', 0))
+            position += padding
 
             file_.seek(size_pos)
             file_.write(struct.pack('%sI' % self.order, position - start_pos))
