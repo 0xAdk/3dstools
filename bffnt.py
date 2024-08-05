@@ -611,6 +611,7 @@ class Bffnt:
         magic, section_size, cell_width, cell_height, num_sheets, max_char_width, sheet_size, baseline_position, \
                 sheet_pixel_format, num_sheet_cols, num_sheet_rows, sheet_width, sheet_height, sheet_data_offset \
                 = struct.unpack(TGLP_HEADER_STRUCT % self.order, data)
+        sheet_pixel_format = Format(sheet_pixel_format)
 
         if magic != TGLP_HEADER_MAGIC:
             print('Invalid TGLP magic bytes: %s (expected %s)' % (magic, TGLP_HEADER_MAGIC))
@@ -631,7 +632,7 @@ class Bffnt:
                 'rows': num_sheet_rows,
                 'width': sheet_width,
                 'height': sheet_height,
-                'format': Format(sheet_pixel_format)
+                'format': sheet_pixel_format
             },
             'sheetOffset': sheet_data_offset
         }
@@ -645,7 +646,7 @@ class Bffnt:
             print('TGLP Max Character Width: %d' % max_char_width)
             print('TGLP Sheet Size: %d' % sheet_size)
             print('TGLP Baseline Position: %d' % baseline_position)
-            print('TGLP Sheet Image Format: 0x%x (%s)' % (sheet_pixel_format, sheet_pixel_format.name))
+            print('TGLP Sheet Image Format: 0x%x (%s)' % (sheet_pixel_format.value, sheet_pixel_format.name))
             print('TGLP Sheet Rows: %d' % num_sheet_rows)
             print('TGLP Sheet Columns: %d' % num_sheet_cols)
             print('TGLP Sheet Width: %d' % sheet_width)
