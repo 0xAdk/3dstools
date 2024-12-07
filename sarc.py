@@ -214,7 +214,8 @@ class Sarc:
         remaining = 0
         output = None
         try:
-            os.mkdir(self.outdir)
+            if self.extract:
+                os.mkdir(self.outdir)
         except:
             pass
 
