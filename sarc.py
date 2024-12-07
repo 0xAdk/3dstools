@@ -114,7 +114,7 @@ class Sarc:
                 filename = '\x00'*16
             else:
                 hash_ = self._calc_filename_hash(filename)
-                offset = 0x01000000 | len(fnt_bytes) / 4
+                offset = 0x01000000 | len(fnt_bytes) // 4
 
             fat_bytes += struct.pack(SFAT_NODE_STRUCT % self.order, hash_, offset, 0, 0)
             fnt_bytes += struct.pack('%s%dsB' % (self.order, len(filename)), filename.encode('ascii'), 0)
@@ -474,10 +474,14 @@ class Sarc:
             else:
                 node['filename'] = '0x%08x.noname.bin' % node['hash']
 
-    def _calc_filename_hash(self, name):
+    def _calc_filename_hash(self, name: bytes | str):
+        if type(name) == str:
+            name = str.encode(name)
+        assert type(name) == bytes
+
         result = 0
         for c in name:
-            result = ord(c) + (result * self.file_name_hash_mult)
+            result = c + (result * self.file_name_hash_mult)
             result &= 0xFFFFFFFF
         return result
 
