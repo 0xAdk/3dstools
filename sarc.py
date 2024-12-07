@@ -488,7 +488,7 @@ class Sarc:
 
     def _list_files(self):
         for node in self.file_nodes:
-            print(node['filename'])
+            print(node['filename'].decode())
 
 
 if __name__ == '__main__':
