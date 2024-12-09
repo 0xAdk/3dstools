@@ -414,6 +414,33 @@ class Bffnt:
             if metadata['bitdepth'] != 8 or metadata['alpha'] != True:
                 print('Invalid sheet PNG:\nexpected a PNG8 with alpha')
 
+            def is_power_of_two(n):
+                return n != 0 and (n & (n - 1) == 0)
+
+            # From https://stackoverflow.com/a/14267825
+            def next_power_of_two(n):
+                return 1 if n == 0 else 1 << (n - 1).bit_length()
+
+            if not is_power_of_two(width) or not is_power_of_two(height):
+                print(f'Note: Non power of 2 image dimensions ({width}x{height}) might produce a broken bffnt!')
+                sug_size_1 = next_power_of_two(math.ceil(math.sqrt(width * height)))
+                sug_size_2 = next_power_of_two(math.ceil(width * height / sug_size_1))
+                # ignore edge case like glyph width being smaller than suggested width
+                suggest_width = min(sug_size_1, sug_size_2)
+
+                # why is glyph width/height one less then the actual pixel width?
+                suggest_cols = math.floor(suggest_width / (tglp['glyph']['width'] + 1))
+                suggest_height = next_power_of_two(math.ceil(
+                    sheet['cols'] * sheet['rows'] / suggest_cols * (tglp['glyph']['height'] + 1)
+                ))
+                suggest_rows = math.floor(suggest_height / (tglp['glyph']['height'] + 1))
+
+                print(f'      If you do experience issues try a {suggest_width}x{suggest_height} image with {suggest_cols} cols and {suggest_rows} rows')
+
+                # should this be a hard error?
+                # self.invalid = True
+                # return
+
             self.tglp['sheet']['size'] = tglp_data_size
 
             bmp: List[Tuple[int, int, int, int]] = []
